@@ -5,6 +5,7 @@ class IshFSM(StatesGroup):
     ish_nomi = State()
     soni = State()
 
+
 from aiogram.fsm.state import State, StatesGroup
 
 class RegisterState(StatesGroup):

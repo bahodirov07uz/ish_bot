@@ -6,6 +6,8 @@ from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
+from datetime import date, datetime
+from aiogram.types import ReplyKeyboardRemove
 
 # ================== SOZLAMALAR ==================
 from config import BOT_TOKEN, PRIVATE_GROUP_ID
@@ -26,6 +28,18 @@ CREATE TABLE IF NOT EXISTS users (
 """)
 conn.commit()
 
+# button
+from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
+
+date_keyboard = ReplyKeyboardMarkup(
+    keyboard=[
+        [KeyboardButton(text="📅 Bugun")],
+        [KeyboardButton(text="✏️ Boshqa sana")]
+    ],
+    resize_keyboard=True,
+    one_time_keyboard=True
+)
+
 
 def get_user(telegram_id: int):
     cur.execute("SELECT name FROM users WHERE telegram_id=?", (telegram_id,))
@@ -45,6 +59,7 @@ class WorkState(StatesGroup):
     waiting_for_name = State()
     waiting_for_job = State()
     waiting_for_count = State()
+    waiting_for_date = State()
 
 
 # ================== BOT ==================
@@ -101,7 +116,40 @@ async def job_count(message: types.Message, state: FSMContext):
         await message.answer("❌ Faqat raqam kiriting!")
         return
 
-    count = message.text
+    await state.update_data(count=message.text)
+
+    await message.answer(
+        "📅 Ish sanasini tanlang:",
+        reply_markup=date_keyboard
+    )
+    await state.set_state(WorkState.waiting_for_date)
+
+
+@dp.message(WorkState.waiting_for_date)
+async def job_date(message: types.Message, state: FSMContext):
+    text = message.text.strip()
+
+    if text == "📅 Bugun":
+        selected_date = date.today().strftime("%Y-%m-%d")
+
+    elif text == "✏️ Boshqa sana":
+        await message.answer(
+            "✏️ Sanani quyidagi formatda kiriting:\n"
+            "YYYY-MM-DD (masalan: 2026-01-05)",
+            reply_markup=ReplyKeyboardRemove()
+        )
+        return
+
+    else:
+        # qo‘lda kiritilgan sana
+        try:
+            datetime.strptime(text, "%Y-%m-%d")
+            selected_date = text
+        except ValueError:
+            selected_date = text
+
+    await state.update_data(date=selected_date)
+
     data = await state.get_data()
     user_db = get_user(message.from_user.id)
 
@@ -112,7 +160,8 @@ async def job_count(message: types.Message, state: FSMContext):
         "📝 YANGI ISH\n\n"
         f"🧑 Ishchi: {user_db[0]}\n"
         f"📦 Ish nomi: {data['job_name']}\n"
-        f"🔢 Soni: {count}\n\n"
+        f"🔢 Soni: {data['count']}\n"
+        f"📅 Sana: {data['date']}\n\n"
         "👤 Telegram ma'lumotlari:\n"
         f"• Username: {username}\n"
         f"• ID: {tg_user.id}"
@@ -122,11 +171,12 @@ async def job_count(message: types.Message, state: FSMContext):
 
     await message.answer(
         "✅ Ish guruhga yuborildi!\n\n"
-        "✍️ Yangi ish yozish buni bosing:"
-        "/start"
+        "🔁 Yangi ish yozish uchun /start ni bosing",
+        reply_markup=ReplyKeyboardRemove()
     )
-    await state.clear()
 
+    # 🔥 ENG MUHIMI
+    await state.clear()
     
 
 
